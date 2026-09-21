@@ -2,6 +2,9 @@
 #include <vector>
 #include <string>
 #include <fstream>
+#include <sstream>
+#include <limits>
+#include <stdexcept>
 
 using namespace std;
 
@@ -46,6 +49,33 @@ public:
         }
 
         return t / 8;
+    }
+
+    string serialize() const {
+        ostringstream out;
+        for (int i = 0; i < 8; i++) {
+            if (i > 0)
+                out << '|';
+            out << sgpa[i];
+        }
+        return out.str();
+    }
+
+    void load(const string& value) {
+        string part;
+        stringstream input(value);
+        int semester = 1;
+
+        while (getline(input, part, '|') && semester <= 8) {
+            try {
+                sgpa[semester - 1] = stof(part);
+            } catch (const invalid_argument&) {
+                sgpa[semester - 1] = -1;
+            } catch (const out_of_range&) {
+                sgpa[semester - 1] = -1;
+            }
+            semester++;
+        }
     }
 
     void show(string n, int id) const {
@@ -168,6 +198,15 @@ public:
             << sem
             << endl;
     }
+
+    int current() const {
+        return sem;
+    }
+
+    void load(int s) {
+        if (s >= 1 && s <= 8)
+            sem = s;
+    }
 };
 
 
@@ -247,7 +286,9 @@ public:
             to_string(id) + "," +
             name + "," +
             to_string(gpa) + "," +
-            (fee.get() ? "1" : "0");
+            (fee.get() ? "1" : "0") + "," +
+            to_string(en.current()) + "," +
+            tr.serialize();
     }
 
     void nextSem() {
@@ -260,6 +301,11 @@ public:
 
     void printTR() const {
         tr.show(name, id);
+    }
+
+    void loadState(int semester, const string& transcript) {
+        en.load(semester);
+        tr.load(transcript);
     }
 };
 
@@ -444,6 +490,23 @@ public:
                 cout << "Final: ";
                 cin >> f;
 
+                if (!cin) {
+                    cin.clear();
+                    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+                    cout << "Marks must be numeric values.\n";
+                    return;
+                }
+
+                if (sem < 1 || sem > 8 ||
+                    q < 0 || q > 100 ||
+                    a < 0 || a > 100 ||
+                    p < 0 || p > 100 ||
+                    m < 0 || m > 100 ||
+                    f < 0 || f > 100) {
+                    cout << "Semester must be 1-8 and marks must be 0-100.\n";
+                    return;
+                }
+
                 s->calc(q, a, p, m, f);
 
                 s->addRes(sem);
@@ -558,14 +621,23 @@ public:
             if (t == "S") {
 
                 string fs = token(line);
+                string semester = token(line);
+                string transcript = line;
 
-                ST* s =
-                    new ST(n,
-                        stoi(id),
-                        stof(ex),
-                        fs == "1");
+                ST* s = NULL;
+                try {
+                    s = new ST(n, stoi(id), stof(ex), fs == "1");
+                    if (!semester.empty())
+                        s->loadState(stoi(semester), transcript);
+                } catch (const invalid_argument&) {
+                    delete s;
+                    continue;
+                } catch (const out_of_range&) {
+                    delete s;
+                    continue;
+                }
 
-                if (!exist(s->getID()))
+                if (s != NULL && !exist(s->getID()))
                     rec.push_back(s);
 
                 else
@@ -574,12 +646,18 @@ public:
 
             else if (t == "P") {
 
-                PR* p =
-                    new PR(n,
-                        stoi(id),
-                        ex);
+                PR* p = NULL;
+                try {
+                    p = new PR(n, stoi(id), ex);
+                } catch (const invalid_argument&) {
+                    delete p;
+                    continue;
+                } catch (const out_of_range&) {
+                    delete p;
+                    continue;
+                }
 
-                if (!exist(p->getID()))
+                if (p != NULL && !exist(p->getID()))
                     rec.push_back(p);
 
                 else
@@ -674,12 +752,17 @@ int main() {
         cout << "5.  Show All\n";
         cout << "6.  Save Data\n";
         cout << "7.  Print Transcript\n";
-        cout << "8.  subject details\n";
+        cout << "8.  Subject Details\n";
         cout << "9.  Enroll Semester\n";
         cout << "10. Exit\n";
 
         cout << "\nChoice: ";
-        cin >> ch;
+        if (!(cin >> ch)) {
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            cout << "Please enter a number from 1 to 10.\n";
+            continue;
+        }
 
         switch (ch) {
 
